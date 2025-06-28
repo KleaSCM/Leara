@@ -151,6 +151,13 @@ pub async fn create_task(
     State(state): State<AppState>,
     Json(payload): Json<TaskRequest>,
 ) -> Result<Json<Task>, (StatusCode, Json<MemoryError>)> {
+    // Validate required fields
+    if payload.title.trim().is_empty() {
+        return Err((StatusCode::UNPROCESSABLE_ENTITY, Json(MemoryError { 
+            error: "Task title cannot be empty".to_string() 
+        })));
+    }
+
     let db = state.db.get().unwrap();
     let task = Task {
         id: 0,
