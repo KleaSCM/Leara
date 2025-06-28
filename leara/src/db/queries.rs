@@ -768,7 +768,7 @@ pub fn store_session_context(conn: &Connection, request: &SessionContextRequest)
     };
     
     conn.execute(
-        "INSERT INTO session_contexts (session_id, context_key, context_value, created_at, updated_at) 
+        "INSERT INTO session_context (session_id, context_key, context_value, created_at, updated_at) \
          VALUES (?, ?, ?, ?, ?)",
         params![
             context.session_id,
