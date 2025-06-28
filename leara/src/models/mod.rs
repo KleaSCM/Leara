@@ -2,7 +2,7 @@
  * Leara AI Assistant - Models Module
  * 
  * This module contains all data models and structures used throughout
- * the application for API requests, responses, and database entities.
+ * the application for type safety and data validation.
  * 
  * Copyright (c) 2024 Leara AI Assistant Contributors
  * 
@@ -17,7 +17,7 @@
  * Version: 0.1.0
  * 
  * File: src/models/mod.rs
- * Purpose: Data models and structures organization
+ * Purpose: Data models and structures
  */
 
 pub mod chat;

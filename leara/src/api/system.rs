@@ -25,8 +25,8 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-// Import Serde for JSON serialization
-use serde::Serialize;
+// Import Serde for JSON serialization/deserialization
+use serde::Deserialize;
 // Import our local system models
 use crate::models::system::SystemInfo;
 // Import tracing for structured logging

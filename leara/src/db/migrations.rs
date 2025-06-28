@@ -51,20 +51,56 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         [],
     )?;
 
-    // Create memory table
+    // Create enhanced memory table with better organization
     conn.execute(
         "CREATE TABLE IF NOT EXISTS memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             key TEXT NOT NULL UNIQUE,
             value TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'general',
+            priority INTEGER DEFAULT 1,
             metadata TEXT,
             created_at DATETIME NOT NULL,
-            updated_at DATETIME NOT NULL
+            updated_at DATETIME NOT NULL,
+            expires_at DATETIME,
+            is_active BOOLEAN DEFAULT 1
         )",
         [],
     )?;
 
-    // Create indexes
+    // Create tasks table for tracking user tasks and reminders
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            priority INTEGER DEFAULT 1,
+            due_date DATETIME,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            completed_at DATETIME,
+            context TEXT,
+            tags TEXT
+        )",
+        [],
+    )?;
+
+    // Create session context table for maintaining conversation context
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS session_context (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            context_key TEXT NOT NULL,
+            context_value TEXT NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            UNIQUE(session_id, context_key)
+        )",
+        [],
+    )?;
+
+    // Create indexes for better performance
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages (conversation_id)",
         [],
@@ -72,6 +108,41 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_memory_key ON memory (key)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_category ON memory (category)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_priority ON memory (priority)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks (priority)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks (due_date)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_session_context_session_id ON session_context (session_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_session_context_key ON session_context (context_key)",
         [],
     )?;
 

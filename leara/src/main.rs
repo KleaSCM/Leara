@@ -21,20 +21,28 @@
  */
 
 use axum::{
-    routing::{get, post},
-    Router,
     http::Method,
+    Router,
 };
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tokio::net::TcpListener;
+use std::sync::{Arc, Mutex};
+use rusqlite::Connection;
+use axum::extract::State;
+use crate::system::MemoryService;
 
 mod api;
 mod db;
 mod system;
 mod models;
 mod utils;
+
+struct AppState {
+    db: Arc<Mutex<Connection>>,
+    memory_service: Arc<MemoryService>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,25 +58,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db::init_database(&db_path).await?;
     info!("Database initialized at: {}", db_path);
 
+    // Open SQLite connection (sync for rusqlite)
+    let conn = Connection::open(&db_path)?;
+    let db = Arc::new(Mutex::new(conn));
+    let memory_service = Arc::new(MemoryService::new(db.clone().lock().unwrap().clone()));
+    let app_state = AppState { db, memory_service };
+
     // Configure CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any);
 
-    // Create router with API routes
+    // Create router with all API routes
     let app = Router::new()
-        .route("/health", get(api::health::health_check))
-        .route("/api/chat", post(api::chat::handle_chat))
-        .route("/api/system/info", get(api::system::get_system_info))
-        .route("/api/memory", get(api::memory::get_memory))
-        .route("/api/memory", post(api::memory::store_memory))
+        .nest("/api", api::create_router())
+        .with_state(app_state)
         .layer(cors);
 
     // Start server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = TcpListener::bind(addr).await?;
     info!("Server listening on {}", addr);
+    info!("API endpoints available at http://{}", addr);
 
     axum::serve(listener, app).await?;
 

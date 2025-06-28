@@ -1,8 +1,8 @@
 /*
  * Leara AI Assistant - System Module
  * 
- * This module provides system monitoring and information gathering
- * capabilities for the AI assistant backend.
+ * This module provides system-level functionality including memory management,
+ * task tracking, and context awareness for the AI assistant.
  * 
  * Copyright (c) 2024 Leara AI Assistant Contributors
  * 
@@ -17,8 +17,12 @@
  * Version: 0.1.0
  * 
  * File: src/system/mod.rs
- * Purpose: System monitoring and information gathering
+ * Purpose: System-level functionality and memory management
  */
+
+pub mod memory_service;
+
+pub use memory_service::MemoryService;
 
 use crate::models::system::SystemInfo;
 
