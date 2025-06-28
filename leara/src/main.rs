@@ -30,19 +30,16 @@ use tracing::info;
 use tokio::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
-use axum::extract::State;
 use crate::system::MemoryService;
+use crate::models::AppState;
+use r2d2::{Pool};
+use r2d2_sqlite::SqliteConnectionManager;
 
 mod api;
 mod db;
 mod system;
 mod models;
 mod utils;
-
-struct AppState {
-    db: Arc<Mutex<Connection>>,
-    memory_service: Arc<MemoryService>,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,10 +55,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db::init_database(&db_path).await?;
     info!("Database initialized at: {}", db_path);
 
-    // Open SQLite connection (sync for rusqlite)
-    let conn = Connection::open(&db_path)?;
-    let db = Arc::new(Mutex::new(conn));
-    let memory_service = Arc::new(MemoryService::new(db.clone().lock().unwrap().clone()));
+    // Open SQLite connection pool (r2d2)
+    let manager = SqliteConnectionManager::file(&db_path);
+    let db = Pool::new(manager)?;
+    
+    // Create a separate connection for MemoryService if needed
+    let memory_service = Arc::new(MemoryService::new(db.clone()));
+    
     let app_state = AppState { db, memory_service };
 
     // Configure CORS
@@ -72,8 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create router with all API routes
     let app = Router::new()
-        .nest("/api", api::create_router())
-        .with_state(app_state)
+        .nest("/api", api::create_router().with_state(app_state.clone()))
         .layer(cors);
 
     // Start server

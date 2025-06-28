@@ -1,0 +1,278 @@
+/*
+ * Leara AI Assistant - Task Modal Styles
+ * 
+ * This file contains the SCSS styles for the task creation modal,
+ * providing a modern and user-friendly form interface.
+ * 
+ * Copyright (c) 2024 Leara AI Assistant Contributors
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Author: KleaSCM
+ * Created: 2024-06-28
+ * Last Modified: 2024-06-28
+ * Version: 0.1.0
+ * 
+ * File: src/styles/TaskModal.scss
+ * Purpose: Task modal component styles
+ */
+
+@import 'variables';
+
+.task-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.task-modal {
+  background: $background-color;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideInUp 0.3s ease-out;
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 1.5rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+    h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: $text-light;
+    }
+
+    .close-button {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0.25rem;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+
+      &:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.1);
+        color: $text-light;
+        transform: scale(1.1);
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .task-form {
+    padding: 1rem 1.5rem 1.5rem;
+
+    .error-message {
+      background: rgba($error-color, 0.2);
+      color: $error-color;
+      padding: 0.75rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      border: 1px solid rgba($error-color, 0.3);
+      font-size: 0.875rem;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: $text-light;
+        font-size: 0.875rem;
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 6px;
+        padding: 0.75rem;
+        color: $text-light;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+
+        &::placeholder {
+          color: rgba(255, 255, 255, 0.5);
+        }
+
+        &:focus {
+          outline: none;
+          border-color: $accent-color;
+          background: rgba(255, 255, 255, 0.15);
+          box-shadow: 0 0 0 2px rgba($accent-color, 0.2);
+        }
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 80px;
+        font-family: inherit;
+      }
+
+      select {
+        cursor: pointer;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+        background-position: right 0.5rem center;
+        background-repeat: no-repeat;
+        background-size: 1.5em 1.5em;
+        padding-right: 2.5rem;
+        appearance: none;
+      }
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+
+      @media (max-width: 480px) {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+
+      .cancel-button,
+      .submit-button {
+        flex: 1;
+        padding: 0.75rem 1.5rem;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      }
+
+      .cancel-button {
+        background: rgba(255, 255, 255, 0.1);
+        color: $text-light;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+
+        &:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.2);
+          transform: translateY(-1px);
+        }
+      }
+
+      .submit-button {
+        background: $accent-color;
+        color: $text-light;
+
+        &:hover:not(:disabled) {
+          background: darken($accent-color, 10%);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba($accent-color, 0.3);
+        }
+      }
+    }
+  }
+}
+
+// Animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+// Responsive Design
+@media (max-width: 768px) {
+  .task-modal {
+    width: 95%;
+    margin: 1rem;
+
+    .modal-header {
+      padding: 1rem 1rem 0.75rem;
+
+      h2 {
+        font-size: 1.1rem;
+      }
+    }
+
+    .task-form {
+      padding: 0.75rem 1rem 1rem;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .task-modal {
+    width: 100%;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    margin: 0;
+
+    .modal-header {
+      padding: 1rem;
+    }
+
+    .task-form {
+      padding: 1rem;
+
+      .form-actions {
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+    }
+  }
+} 

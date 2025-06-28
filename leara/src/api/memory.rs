@@ -22,9 +22,8 @@
 
 // Import Axum web framework components for HTTP handling
 use axum::{
-    extract::{Json, Query, Path},
+    extract::{Json, Query, Path, State},
     http::StatusCode,
-    response::Json as JsonResponse,
 };
 // Import Serde for JSON serialization/deserialization
 use serde::{Deserialize, Serialize};
@@ -32,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::memory::*;
 use crate::system::MemoryService;
 use crate::db::queries::*;
+use crate::models::AppState;
 // Import tracing for structured logging
 use tracing::{info, error};
 
@@ -49,6 +49,17 @@ pub struct MemoryRequest {
     pub context: Option<String>,
     /// Optional priority level (1-5)
     pub priority: Option<i32>,
+    /// Optional category for the memory entry
+    pub category: Option<String>,
+    /// Optional expiration date for the memory entry
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Request structure for searching memories
+#[derive(Debug, Deserialize)]
+pub struct MemorySearchRequest {
+    /// Search query string
+    pub query: String,
 }
 
 /// Response structure for memory operations
@@ -75,34 +86,17 @@ pub struct MemoryError {
 /// Supports filtering and pagination.
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<MemoryResponse>)` - Successfully retrieved memory entries
+/// * `Ok(Json<MemoryResponse>)` - Successfully retrieved memory entries
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response with appropriate HTTP status
 pub async fn get_memory(
+    State(state): State<AppState>,
     Query(query): Query<MemoryQuery>,
-) -> Result<JsonResponse<MemoryResponse>, (StatusCode, Json<MemoryError>)> {
-    // TODO: Get database connection from state
-    // For now, return mock data
-    let entries = vec![
-        Memory {
-            id: 1,
-            key: "example".to_string(),
-            value: "test value".to_string(),
-            category: "general".to_string(),
-            priority: 3,
-            metadata: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            expires_at: None,
-            is_active: true,
-        }
-    ];
-
-    let response = MemoryResponse {
-        memories: entries,
-        total: 1,
-    };
-
-    Ok(JsonResponse(response))
+) -> Result<Json<MemoryResponse>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
+    match crate::db::queries::get_enhanced_memories(&db, &query) {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 }
 
 /// Store a new memory entry in the database
@@ -114,20 +108,32 @@ pub async fn get_memory(
 /// * `payload` - The deserialized memory request containing key, value, and optional metadata
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<MemoryOperationResponse>)` - Successfully stored memory entry
+/// * `Ok(Json<MemoryOperationResponse>)` - Successfully stored memory entry
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response with appropriate HTTP status
 pub async fn store_memory(
+    State(state): State<AppState>,
     Json(payload): Json<MemoryRequest>,
-) -> Result<JsonResponse<MemoryOperationResponse>, (StatusCode, Json<MemoryError>)> {
-    // TODO: Get database connection and memory service from state
-    // For now, simulate successful storage
-    let response = MemoryOperationResponse {
-        success: true,
-        message: format!("Stored memory for key: {}", payload.key),
+) -> Result<Json<MemoryOperationResponse>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
+    let memory = Memory {
+        id: 0,
+        key: payload.key.clone(),
+        value: payload.value.clone(),
+        category: payload.category.unwrap_or_else(|| "general".to_string()),
+        priority: payload.priority.unwrap_or(3),
+        metadata: payload.metadata.clone(),
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        expires_at: payload.expires_at,
+        is_active: true,
     };
-
-    info!("Storing memory: {} = {}", payload.key, payload.value);
-    Ok(JsonResponse(response))
+    match crate::db::queries::insert_enhanced_memory(&db, &memory) {
+        Ok(_) => Ok(Json(MemoryOperationResponse {
+            success: true,
+            message: format!("Stored memory for key: {}", payload.key),
+        })),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 }
 
 /// Create a task from natural language input
@@ -139,29 +145,30 @@ pub async fn store_memory(
 /// * `payload` - Task creation request with natural language description
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<Task>)` - Successfully created task
+/// * `Ok(Json<Task>)` - Successfully created task
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response
 pub async fn create_task(
+    State(state): State<AppState>,
     Json(payload): Json<TaskRequest>,
-) -> Result<JsonResponse<Task>, (StatusCode, Json<MemoryError>)> {
-    // TODO: Get database connection and memory service from state
-    // For now, create a mock task
+) -> Result<Json<Task>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
     let task = Task {
-        id: 1,
-        title: payload.title,
-        description: payload.description,
+        id: 0,
+        title: payload.title.clone(),
+        description: payload.description.clone(),
         status: "pending".to_string(),
         priority: payload.priority.unwrap_or(3),
         due_date: payload.due_date,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         completed_at: None,
-        context: payload.context,
-        tags: payload.tags,
+        context: payload.context.clone(),
+        tags: payload.tags.clone(),
     };
-
-    info!("Created task: {}", task.title);
-    Ok(JsonResponse(task))
+    match crate::db::queries::insert_task(&db, &task) {
+        Ok(_) => Ok(Json(task)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 }
 
 /// Get all tasks with optional filtering
@@ -170,35 +177,17 @@ pub async fn create_task(
 /// * `query` - Query parameters for filtering tasks
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<TaskResponse>)` - Tasks and total count
+/// * `Ok(Json<TaskResponse>)` - Tasks and total count
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response
 pub async fn get_tasks(
+    State(state): State<AppState>,
     Query(query): Query<TaskQuery>,
-) -> Result<JsonResponse<TaskResponse>, (StatusCode, Json<MemoryError>)> {
-    // TODO: Get database connection and memory service from state
-    // For now, return mock data
-    let tasks = vec![
-        Task {
-            id: 1,
-            title: "Make changes to system.rs".to_string(),
-            description: Some("Update the system.rs file in the leara project".to_string()),
-            status: "pending".to_string(),
-            priority: 4,
-            due_date: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            completed_at: None,
-            context: Some("leara project development".to_string()),
-            tags: Some("rust,system,leara".to_string()),
-        }
-    ];
-
-    let response = TaskResponse {
-        tasks,
-        total: 1,
-    };
-
-    Ok(JsonResponse(response))
+) -> Result<Json<TaskResponse>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
+    match crate::db::queries::get_tasks(&db, &query) {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 }
 
 /// Update task status
@@ -208,30 +197,22 @@ pub async fn get_tasks(
 /// * `payload` - Status update request
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<MemoryOperationResponse>)` - Success response
+/// * `Ok(Json<MemoryOperationResponse>)` - Success response
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response
 pub async fn update_task_status(
+    State(state): State<AppState>,
     Path(task_id): Path<i64>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<JsonResponse<MemoryOperationResponse>, (StatusCode, Json<MemoryError>)> {
-    let status = payload.get("status")
-        .and_then(|s| s.as_str())
-        .ok_or_else(|| (
-            StatusCode::BAD_REQUEST,
-            Json(MemoryError {
-                error: "Status field is required".to_string(),
-            })
-        ))?;
-
-    // TODO: Get database connection and update task status
-    info!("Updating task {} status to: {}", task_id, status);
-
-    let response = MemoryOperationResponse {
-        success: true,
-        message: format!("Updated task {} status to {}", task_id, status),
-    };
-
-    Ok(JsonResponse(response))
+) -> Result<Json<MemoryOperationResponse>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
+    let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+    match crate::db::queries::update_task_status(&db, task_id, status) {
+        Ok(_) => Ok(Json(MemoryOperationResponse {
+            success: true,
+            message: format!("Updated status for task {}", task_id),
+        })),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 }
 
 /// Search memories using natural language query
@@ -243,126 +224,80 @@ pub async fn update_task_status(
 /// * `payload` - Search request with natural language query
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<MemoryResponse>)` - Relevant memories
+/// * `Ok(Json<MemoryResponse>)` - Relevant memories
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response
 pub async fn search_memories(
-    Json(payload): Json<serde_json::Value>,
-) -> Result<JsonResponse<MemoryResponse>, (StatusCode, Json<MemoryError>)> {
-    let query = payload.get("query")
-        .and_then(|q| q.as_str())
-        .ok_or_else(|| (
-            StatusCode::BAD_REQUEST,
-            Json(MemoryError {
-                error: "Query field is required".to_string(),
-            })
-        ))?;
-
-    // TODO: Get database connection and memory service from state
-    // For now, return mock search results
-    let memories = vec![
-        Memory {
-            id: 1,
-            key: "system.rs_changes".to_string(),
-            value: "Need to make changes to system.rs in the leara project".to_string(),
-            category: "task".to_string(),
-            priority: 4,
-            metadata: Some(serde_json::json!({
-                "context": "leara project development",
-                "created_at": chrono::Utc::now().to_rfc3339(),
-            })),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            expires_at: None,
-            is_active: true,
-        }
-    ];
-
-    let response = MemoryResponse {
-        memories,
-        total: 1,
-    };
-
-    info!("Search query: '{}' returned {} results", query, response.total);
-    Ok(JsonResponse(response))
+    State(state): State<AppState>,
+    Json(payload): Json<MemorySearchRequest>,
+) -> Result<Json<MemoryResponse>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
+    match crate::db::queries::search_memories(&db, &payload.query) {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 }
 
-/// Get memory summary
+/// Get a summary of all stored memories
 /// 
-/// This endpoint provides a summary of recent memories and pending tasks
-/// to give users an overview of their stored information.
+/// This endpoint provides a high-level overview of all stored memories,
+/// useful for understanding the current state of the memory system.
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<serde_json::Value>)` - Memory summary
+/// * `Ok(Json<serde_json::Value>)` - Memory summary
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response
-pub async fn get_memory_summary() -> Result<JsonResponse<serde_json::Value>, (StatusCode, Json<MemoryError>)> {
-    // TODO: Get database connection and memory service from state
-    // For now, return mock summary
-    let summary = serde_json::json!({
-        "summary": "You have 1 pending task: 'Make changes to system.rs in the leara project' (Priority: 4)",
-        "recent_memories": 1,
-        "pending_tasks": 1,
-        "overdue_tasks": 0,
-    });
-
-    Ok(JsonResponse(summary))
+pub async fn get_memory_summary(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
+    match crate::db::queries::get_memory_summary(&db) {
+        Ok(summary) => Ok(Json(summary)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 }
 
-/// Store session context
+/// Store session context information
 /// 
-/// This endpoint stores context information for the current session
-/// to maintain conversation continuity.
+/// This endpoint allows storing context information for a specific session,
+/// which can be used to maintain conversation state and user preferences.
 /// 
 /// # Arguments
-/// * `payload` - Session context request
+/// * `payload` - Session context request with session ID and context data
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<MemoryOperationResponse>)` - Success response
+/// * `Ok(Json<MemoryOperationResponse>)` - Successfully stored context
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response
 pub async fn store_session_context(
+    State(state): State<AppState>,
     Json(payload): Json<SessionContextRequest>,
-) -> Result<JsonResponse<MemoryOperationResponse>, (StatusCode, Json<MemoryError>)> {
-    // TODO: Get database connection and memory service from state
-    info!("Storing session context: {} -> {}", payload.context_key, payload.context_value);
-
-    let response = MemoryOperationResponse {
-        success: true,
-        message: format!("Stored session context: {}", payload.context_key),
-    };
-
-    Ok(JsonResponse(response))
+) -> Result<Json<MemoryOperationResponse>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
+    match crate::db::queries::store_session_context(&db, &payload) {
+        Ok(_) => Ok(Json(MemoryOperationResponse {
+            success: true,
+            message: "Session context stored".to_string(),
+        })),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 }
 
-/// Get session context
+/// Retrieve session context information
 /// 
-/// This endpoint retrieves context information for a specific session
-/// to restore conversation state.
+/// This endpoint retrieves all context information for a specific session,
+/// allowing the system to restore conversation state and user preferences.
 /// 
 /// # Arguments
-/// * `session_id` - Session identifier
+/// * `session_id` - The session identifier to retrieve context for
 /// 
 /// # Returns
-/// * `Ok(JsonResponse<SessionContextResponse>)` - Session contexts
+/// * `Ok(Json<SessionContextResponse>)` - Session context data
 /// * `Err((StatusCode, Json<MemoryError>))` - Error response
 pub async fn get_session_context(
+    State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<JsonResponse<SessionContextResponse>, (StatusCode, Json<MemoryError>)> {
-    // TODO: Get database connection and memory service from state
-    // For now, return mock context
-    let contexts = vec![
-        SessionContext {
-            id: 1,
-            session_id: session_id.clone(),
-            context_key: "current_project".to_string(),
-            context_value: "leara".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        }
-    ];
-
-    let response = SessionContextResponse {
-        contexts,
-        total: 1,
-    };
-
-    Ok(JsonResponse(response))
+) -> Result<Json<SessionContextResponse>, (StatusCode, Json<MemoryError>)> {
+    let db = state.db.get().unwrap();
+    match crate::db::queries::get_session_context(&db, &session_id) {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
+    }
 } 

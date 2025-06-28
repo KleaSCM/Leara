@@ -1,0 +1,456 @@
+/*
+ * Leara AI Assistant - Memory Sidebar Styles
+ * 
+ * This file contains the SCSS styles for the memory sidebar component,
+ * providing a modern and responsive design for memory and task management.
+ * 
+ * Copyright (c) 2024 Leara AI Assistant Contributors
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Author: KleaSCM
+ * Created: 2024-06-28
+ * Last Modified: 2024-06-28
+ * Version: 0.1.0
+ * 
+ * File: src/styles/MemorySidebar.scss
+ * Purpose: Memory sidebar component styles
+ */
+
+@import 'variables';
+
+.memory-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 400px;
+  height: 100vh;
+  background: linear-gradient(135deg, $primary-color 0%, darken($primary-color, 10%) 100%);
+  color: $text-light;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.3s ease-out;
+  overflow: hidden;
+
+  .sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+
+    h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: $text-light;
+    }
+
+    .close-button {
+      background: none;
+      border: none;
+      color: $text-light;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0.25rem;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: scale(1.1);
+      }
+    }
+  }
+
+  .sidebar-tabs {
+    display: flex;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+    .tab {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 0.875rem;
+      font-weight: 500;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: $text-light;
+      }
+
+      &.active {
+        background: rgba(255, 255, 255, 0.2);
+        color: $text-light;
+        border-bottom: 2px solid $accent-color;
+      }
+    }
+  }
+
+  .sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+
+    .error-message {
+      background: rgba($error-color, 0.2);
+      color: $error-color;
+      padding: 0.75rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      border: 1px solid rgba($error-color, 0.3);
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: rgba(255, 255, 255, 0.7);
+      font-style: italic;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: rgba(255, 255, 255, 0.6);
+      font-style: italic;
+    }
+
+    h3 {
+      margin: 0 0 1rem 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: $text-light;
+    }
+
+    h4 {
+      margin: 1rem 0 0.5rem 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: $text-light;
+    }
+  }
+
+  // Memories Tab
+  .memories-tab {
+    .memories-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+
+      .memory-item {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: all 0.2s ease;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.15);
+          transform: translateY(-1px);
+        }
+
+        .memory-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 0.5rem;
+
+          .memory-key {
+            font-weight: 600;
+            color: $text-light;
+            font-size: 0.9rem;
+          }
+
+          .priority-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+
+            &.priority-high {
+              background: rgba($error-color, 0.3);
+              color: lighten($error-color, 20%);
+            }
+
+            &.priority-medium-high {
+              background: rgba($warning-color, 0.3);
+              color: lighten($warning-color, 20%);
+            }
+
+            &.priority-medium {
+              background: rgba($accent-color, 0.3);
+              color: lighten($accent-color, 20%);
+            }
+
+            &.priority-low {
+              background: rgba($success-color, 0.3);
+              color: lighten($success-color, 20%);
+            }
+          }
+        }
+
+        .memory-value {
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 0.875rem;
+          line-height: 1.4;
+          margin-bottom: 0.5rem;
+        }
+
+        .memory-meta {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 0.75rem;
+          color: rgba(255, 255, 255, 0.6);
+
+          .category {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+          }
+        }
+      }
+    }
+  }
+
+  // Tasks Tab
+  .tasks-tab {
+    .tasks-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+
+      .task-item {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: all 0.2s ease;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.15);
+          transform: translateY(-1px);
+        }
+
+        .task-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 0.5rem;
+
+          .task-title {
+            font-weight: 600;
+            color: $text-light;
+            font-size: 0.9rem;
+          }
+        }
+
+        .task-description {
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 0.8rem;
+          line-height: 1.4;
+          margin-bottom: 0.5rem;
+        }
+
+        .task-meta {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 0.75rem;
+
+          .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+
+            &.status-completed {
+              background: rgba($success-color, 0.3);
+              color: lighten($success-color, 20%);
+            }
+
+            &.status-in-progress {
+              background: rgba($accent-color, 0.3);
+              color: lighten($accent-color, 20%);
+            }
+
+            &.status-pending {
+              background: rgba($warning-color, 0.3);
+              color: lighten($warning-color, 20%);
+            }
+          }
+
+          .due-date {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.6);
+          }
+        }
+
+        .task-actions {
+          display: flex;
+          gap: 0.5rem;
+
+          .action-button {
+            background: rgba($accent-color, 0.3);
+            color: $text-light;
+            border: 1px solid rgba($accent-color, 0.5);
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+
+            &:hover {
+              background: rgba($accent-color, 0.5);
+              transform: translateY(-1px);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Search Tab
+  .search-tab {
+    .search-input {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+
+      input {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 6px;
+        padding: 0.75rem;
+        color: $text-light;
+        font-size: 0.875rem;
+
+        &::placeholder {
+          color: rgba(255, 255, 255, 0.5);
+        }
+
+        &:focus {
+          outline: none;
+          border-color: $accent-color;
+          background: rgba(255, 255, 255, 0.15);
+        }
+      }
+
+      button {
+        background: $accent-color;
+        color: $text-light;
+        border: none;
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:hover:not(:disabled) {
+          background: darken($accent-color, 10%);
+          transform: translateY(-1px);
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+    }
+
+    .search-results {
+      .memory-item {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 0.75rem;
+        transition: all 0.2s ease;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.15);
+          transform: translateY(-1px);
+        }
+      }
+    }
+  }
+
+  // Summary Tab
+  .summary-tab {
+    .summary-content {
+      .summary-text {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 0.875rem;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+    }
+  }
+}
+
+// Animation
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+// Responsive Design
+@media (max-width: 768px) {
+  .memory-sidebar {
+    width: 100vw;
+    right: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .memory-sidebar {
+    .sidebar-header {
+      padding: 0.75rem 1rem;
+
+      h2 {
+        font-size: 1.1rem;
+      }
+    }
+
+    .sidebar-tabs {
+      .tab {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+      }
+    }
+
+    .sidebar-content {
+      padding: 0.75rem;
+
+      .memory-item,
+      .task-item {
+        padding: 0.75rem;
+      }
+    }
+  }
+} 

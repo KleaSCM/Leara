@@ -25,7 +25,7 @@ use rusqlite::{Connection, Result, params};
 // Import our local models for type safety
 use crate::models::{chat::*, memory::*};
 // Import chrono for timestamp handling
-use chrono::Utc;
+use chrono::{Utc, DateTime};
 // Import uuid for unique identifier handling
 use uuid;
 
@@ -551,4 +551,148 @@ pub fn get_session_contexts(conn: &Connection, query: &SessionContextQuery) -> R
     let contexts = Vec::new();
     
     Ok(SessionContextResponse { contexts, total })
+}
+
+/// Search memories using a query string
+/// 
+/// # Arguments
+/// * `conn` - Active database connection
+/// * `query` - Search query string
+/// 
+/// # Returns
+/// * `Ok(MemoryResponse)` - Matching memories and total count
+/// * `Err(rusqlite::Error)` - Database error
+pub fn search_memories(conn: &Connection, query: &str) -> Result<MemoryResponse> {
+    let search_pattern = format!("%{}%", query);
+    
+    let count_sql = "SELECT COUNT(*) FROM memory WHERE key LIKE ? OR value LIKE ? OR category LIKE ?";
+    let total: i64 = conn.query_row(count_sql, params![search_pattern, search_pattern, search_pattern], |row| row.get(0))?;
+    
+    let sql = "SELECT id, key, value, category, priority, metadata, created_at, updated_at, expires_at, is_active 
+               FROM memory 
+               WHERE key LIKE ? OR value LIKE ? OR category LIKE ? 
+               ORDER BY priority DESC, updated_at DESC 
+               LIMIT 50";
+    
+    let mut stmt = conn.prepare(sql)?;
+    let memory_iter = stmt.query_map(params![search_pattern, search_pattern, search_pattern], |row| {
+        let metadata_str: Option<String> = row.get(5)?;
+        let metadata = metadata_str
+            .and_then(|s| serde_json::from_str(&s).ok());
+        
+        Ok(Memory {
+            id: row.get(0)?,
+            key: row.get(1)?,
+            value: row.get(2)?,
+            category: row.get(3)?,
+            priority: row.get(4)?,
+            metadata,
+            created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc),
+            expires_at: row.get::<_, Option<String>>(8)?.map(|s| DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc)),
+            is_active: row.get(9)?,
+        })
+    })?;
+    
+    let memories: Result<Vec<_>> = memory_iter.collect();
+    Ok(MemoryResponse { memories: memories?, total })
+}
+
+/// Get a summary of all stored memories
+/// 
+/// # Arguments
+/// * `conn` - Active database connection
+/// 
+/// # Returns
+/// * `Ok(serde_json::Value)` - Memory summary
+/// * `Err(rusqlite::Error)` - Database error
+pub fn get_memory_summary(conn: &Connection) -> Result<serde_json::Value> {
+    let total_memories: i64 = conn.query_row("SELECT COUNT(*) FROM memories", params![], |row| row.get(0))?;
+    let active_memories: i64 = conn.query_row("SELECT COUNT(*) FROM memories WHERE is_active = 1", params![], |row| row.get(0))?;
+    let total_tasks: i64 = conn.query_row("SELECT COUNT(*) FROM tasks", params![], |row| row.get(0))?;
+    let completed_tasks: i64 = conn.query_row("SELECT COUNT(*) FROM tasks WHERE status = 'completed'", params![], |row| row.get(0))?;
+    
+    Ok(serde_json::json!({
+        "total_memories": total_memories,
+        "active_memories": active_memories,
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "completion_rate": if total_tasks > 0 { (completed_tasks as f64 / total_tasks as f64) * 100.0 } else { 0.0 }
+    }))
+}
+
+/// Get session context for a specific session
+/// 
+/// # Arguments
+/// * `conn` - Active database connection
+/// * `session_id` - Session identifier
+/// 
+/// # Returns
+/// * `Ok(SessionContextResponse)` - Session contexts and total count
+/// * `Err(rusqlite::Error)` - Database error
+pub fn get_session_context(conn: &Connection, session_id: &str) -> Result<SessionContextResponse> {
+    let count_sql = "SELECT COUNT(*) FROM session_context WHERE session_id = ?";
+    let total: i64 = conn.query_row(count_sql, params![session_id], |row| row.get(0))?;
+    
+    let sql = "SELECT id, session_id, context_key, context_value, created_at, updated_at 
+               FROM session_context 
+               WHERE session_id = ? 
+               ORDER BY updated_at DESC";
+    
+    let mut stmt = conn.prepare(sql)?;
+    let context_iter = stmt.query_map(params![session_id], |row| {
+        Ok(SessionContext {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            context_key: row.get(2)?,
+            context_value: row.get(3)?,
+            created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc),
+        })
+    })?;
+    
+    let contexts: Result<Vec<_>> = context_iter.collect();
+    Ok(SessionContextResponse { contexts: contexts?, total })
+}
+
+/// Store session context
+/// 
+/// # Arguments
+/// * `conn` - Active database connection
+/// * `request` - SessionContextRequest struct containing the context data
+/// 
+/// # Returns
+/// * `Ok(())` - Successfully stored session context
+/// * `Err(rusqlite::Error)` - Database error
+pub fn store_session_context(conn: &Connection, request: &SessionContextRequest) -> Result<()> {
+    let context = SessionContext {
+        id: 0,
+        session_id: request.session_id.clone(),
+        context_key: request.context_key.clone(),
+        context_value: request.context_value.clone(),
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    
+    conn.execute(
+        "INSERT INTO session_contexts (session_id, context_key, context_value, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?)",
+        params![
+            context.session_id,
+            context.context_key,
+            context.context_value,
+            context.created_at.to_rfc3339(),
+            context.updated_at.to_rfc3339()
+        ],
+    )?;
+    
+    Ok(())
 } 

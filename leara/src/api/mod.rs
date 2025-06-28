@@ -25,6 +25,8 @@ use axum::{
     Router,
 };
 
+use crate::models::AppState;
+
 pub mod health;
 pub mod chat;
 pub mod system;
@@ -44,8 +46,8 @@ use memory::{
 /// including chat, memory, system, and health endpoints.
 /// 
 /// # Returns
-/// * `Router` - Configured Axum router with all API endpoints
-pub fn create_router() -> Router {
+/// * `Router<AppState>` - Configured Axum router with all API endpoints
+pub fn create_router() -> Router<AppState> {
     Router::new()
         // Health check endpoint
         .route("/health", get(health_check))

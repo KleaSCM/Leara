@@ -27,6 +27,8 @@ use serde_json::json;
 use tracing::{info, warn, error};
 use crate::models::memory::*;
 use crate::db::queries::*;
+use r2d2::{Pool, PooledConnection};
+use r2d2_sqlite::SqliteConnectionManager;
 
 /// Memory service for intelligent storage and retrieval of information
 /// 
@@ -37,19 +39,27 @@ use crate::db::queries::*;
 /// - Automatic categorization and prioritization
 /// - Session context management
 pub struct MemoryService {
-    conn: Connection,
+    pool: Pool<SqliteConnectionManager>,
 }
 
 impl MemoryService {
     /// Create a new memory service instance
     /// 
     /// # Arguments
-    /// * `conn` - Database connection for memory operations
+    /// * `pool` - Connection pool for database operations
     /// 
     /// # Returns
     /// * `Self` - New memory service instance
-    pub fn new(conn: Connection) -> Self {
-        Self { conn }
+    pub fn new(pool: Pool<SqliteConnectionManager>) -> Self {
+        Self { pool }
+    }
+
+    /// Get a connection from the pool
+    /// 
+    /// # Returns
+    /// * `Result<PooledConnection<SqliteConnectionManager>>` - Database connection
+    fn get_conn(&self) -> Result<PooledConnection<SqliteConnectionManager>, rusqlite::Error> {
+        self.pool.get().map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))
     }
 
     /// Store a memory entry with intelligent categorization
@@ -66,6 +76,7 @@ impl MemoryService {
     /// # Returns
     /// * `Result<(), rusqlite::Error>` - Success or error
     pub fn store_memory(&self, key: &str, value: &str, context: Option<&str>, priority: Option<i32>) -> Result<(), rusqlite::Error> {
+        let conn = self.get_conn()?;
         let category = self.categorize_content(value, context);
         let priority = priority.unwrap_or_else(|| self.determine_priority(value, context));
         
@@ -86,7 +97,7 @@ impl MemoryService {
             is_active: true,
         };
 
-        insert_enhanced_memory(&self.conn, &memory)?;
+        insert_enhanced_memory(&conn, &memory)?;
         info!("Stored memory: {} (category: {}, priority: {})", key, category.as_str(), priority);
         Ok(())
     }
@@ -103,6 +114,7 @@ impl MemoryService {
     /// # Returns
     /// * `Result<Task, rusqlite::Error>` - Created task or error
     pub fn create_task_from_input(&self, input: &str, context: Option<&str>) -> Result<Task, rusqlite::Error> {
+        let conn = self.get_conn()?;
         let (title, description, priority, due_date) = self.parse_task_input(input);
         
         let task = Task {
@@ -119,7 +131,7 @@ impl MemoryService {
             tags: self.extract_tags(input),
         };
 
-        insert_task(&self.conn, &task)?;
+        insert_task(&conn, &task)?;
         info!("Created task: {} (priority: {}, due: {:?})", task.title, priority, due_date);
         Ok(task)
     }
@@ -136,6 +148,7 @@ impl MemoryService {
     /// # Returns
     /// * `Result<Vec<Memory>, rusqlite::Error>` - Relevant memories or error
     pub fn find_relevant_memories(&self, query: &str, limit: Option<i32>) -> Result<Vec<Memory>, rusqlite::Error> {
+        let conn = self.get_conn()?;
         let keywords = self.extract_keywords(query);
         let mut relevant_memories = Vec::new();
 
@@ -151,7 +164,7 @@ impl MemoryService {
                 include_expired: Some(false),
             };
 
-            if let Ok(response) = get_enhanced_memories(&self.conn, &memory_query) {
+            if let Ok(response) = get_enhanced_memories(&conn, &memory_query) {
                 relevant_memories.extend(response.memories);
             }
         }
@@ -167,7 +180,7 @@ impl MemoryService {
                 include_expired: Some(false),
             };
 
-            if let Ok(response) = get_enhanced_memories(&self.conn, &memory_query) {
+            if let Ok(response) = get_enhanced_memories(&conn, &memory_query) {
                 relevant_memories.extend(response.memories);
             }
         }
@@ -194,6 +207,7 @@ impl MemoryService {
     /// # Returns
     /// * `Result<Vec<Task>, rusqlite::Error>` - Pending tasks or error
     pub fn get_pending_tasks(&self, include_overdue: bool) -> Result<Vec<Task>, rusqlite::Error> {
+        let conn = self.get_conn()?;
         let query = TaskQuery {
             status: Some("pending".to_string()),
             priority: None,
@@ -202,23 +216,8 @@ impl MemoryService {
             include_completed: Some(false),
         };
 
-        let response = get_tasks(&self.conn, &query)?;
-        let mut tasks = response.tasks;
-
-        if include_overdue {
-            let now = Utc::now();
-            tasks.retain(|task| {
-                task.due_date.map_or(false, |due_date| due_date < now)
-            });
-        }
-
-        // Sort by priority and due date
-        tasks.sort_by(|a, b| {
-            a.priority.cmp(&b.priority).reverse()
-                .then(a.due_date.cmp(&b.due_date))
-        });
-
-        Ok(tasks)
+        let response = get_tasks(&conn, &query)?;
+        Ok(response.tasks)
     }
 
     /// Store session context for conversation continuity
@@ -231,6 +230,7 @@ impl MemoryService {
     /// # Returns
     /// * `Result<(), rusqlite::Error>` - Success or error
     pub fn store_session_context(&self, session_id: &str, context_key: &str, context_value: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.get_conn()?;
         let context = SessionContext {
             id: 0, // Will be auto-generated
             session_id: session_id.to_string(),
@@ -240,7 +240,7 @@ impl MemoryService {
             updated_at: Utc::now(),
         };
 
-        insert_session_context(&self.conn, &context)?;
+        insert_session_context(&conn, &context)?;
         info!("Stored session context: {} -> {}", context_key, context_value);
         Ok(())
     }
@@ -253,6 +253,7 @@ impl MemoryService {
     /// # Returns
     /// * `Result<Vec<SessionContext>, rusqlite::Error>` - Session contexts or error
     pub fn get_session_context(&self, session_id: &str) -> Result<Vec<SessionContext>, rusqlite::Error> {
+        let conn = self.get_conn()?;
         let query = SessionContextQuery {
             session_id: Some(session_id.to_string()),
             context_key: None,
@@ -260,7 +261,7 @@ impl MemoryService {
             offset: Some(0),
         };
 
-        let response = get_session_contexts(&self.conn, &query)?;
+        let response = get_session_contexts(&conn, &query)?;
         Ok(response.contexts)
     }
 
@@ -504,6 +505,7 @@ impl MemoryService {
     /// # Returns
     /// * `Result<String, rusqlite::Error>` - Summary text or error
     pub fn get_memory_summary(&self) -> Result<String, rusqlite::Error> {
+        let conn = self.get_conn()?;
         let mut summary = String::new();
 
         // Get recent high-priority memories
@@ -516,7 +518,7 @@ impl MemoryService {
             include_expired: Some(false),
         };
 
-        if let Ok(response) = get_enhanced_memories(&self.conn, &memory_query) {
+        if let Ok(response) = get_enhanced_memories(&conn, &memory_query) {
             if !response.memories.is_empty() {
                 summary.push_str("Recent important memories:\n");
                 for memory in &response.memories {
