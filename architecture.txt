@@ -1,0 +1,7 @@
+graph TD
+    A["Electron GUI (JS/TS)"]
+    B["Rust Backend (API Server)"]
+    C["SQLite DB (Local Storage)"]
+
+    A -- "HTTP/WebSocket/gRPC" --> B
+    B -- "SQL Queries (rusqlite/diesel)" --> C
