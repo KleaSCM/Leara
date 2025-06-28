@@ -24,6 +24,8 @@
 use axum::{
     extract::{Json, Query, Path, State},
     http::StatusCode,
+    routing::{get, post, put},
+    Router,
 };
 // Import Serde for JSON serialization/deserialization
 use serde::{Deserialize, Serialize};
@@ -307,4 +309,18 @@ pub async fn get_session_context(
         Ok(response) => Ok(Json(response)),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(MemoryError { error: e.to_string() }))),
     }
+}
+
+/// Create router for memory-related endpoints
+pub fn create_router() -> Router<AppState> {
+    Router::new()
+        .route("/", get(get_memory))
+        .route("/", post(store_memory))
+        .route("/search", post(search_memories))
+        .route("/summary", get(get_memory_summary))
+        .route("/tasks", get(get_tasks))
+        .route("/tasks", post(create_task))
+        .route("/tasks/:id/status", put(update_task_status))
+        .route("/context", post(store_session_context))
+        .route("/context/:session_id", get(get_session_context))
 } 

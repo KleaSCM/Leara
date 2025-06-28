@@ -780,4 +780,139 @@ pub fn store_session_context(conn: &Connection, request: &SessionContextRequest)
     )?;
     
     Ok(())
+}
+
+/// Store command execution history
+/// 
+/// This function stores information about commands executed by the system,
+/// including success status, execution time, and user confirmation status.
+/// 
+/// # Arguments
+/// * `conn` - Database connection
+/// * `command` - The command that was executed
+/// * `args` - Optional arguments passed to the command
+/// * `working_dir` - Optional working directory
+/// * `success` - Whether the command executed successfully
+/// * `exit_code` - Exit code from the command
+/// * `execution_time_ms` - Execution time in milliseconds
+/// * `user_confirmed` - Whether the user confirmed the command
+/// 
+/// # Returns
+/// * `Ok(())` - Successfully stored command history
+/// * `Err(rusqlite::Error)` - Database error
+pub fn store_command_history(
+    conn: &Connection,
+    command: &str,
+    args: &Option<Vec<String>>,
+    working_dir: &Option<String>,
+    success: bool,
+    exit_code: i32,
+    execution_time_ms: u64,
+    user_confirmed: bool,
+) -> Result<()> {
+    let args_json = args.as_ref().map(|a| serde_json::to_string(a).unwrap_or_default());
+    
+    conn.execute(
+        "INSERT INTO command_history (command, args, working_dir, success, exit_code, execution_time_ms, user_confirmed, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            command,
+            args_json,
+            working_dir,
+            success,
+            exit_code,
+            execution_time_ms,
+            user_confirmed,
+            chrono::Utc::now().to_rfc3339()
+        ],
+    )?;
+    
+    Ok(())
+}
+
+/// Get command execution history
+/// 
+/// This function retrieves the history of commands executed by the system,
+/// with optional filtering by success status and pagination.
+/// 
+/// # Arguments
+/// * `conn` - Database connection
+/// * `query` - Query parameters for filtering and pagination
+/// 
+/// # Returns
+/// * `Ok(CommandHistoryResponse)` - Command history with total count
+/// * `Err(rusqlite::Error)` - Database error
+pub fn get_command_history(
+    conn: &Connection,
+    query: &crate::api::system::CommandHistoryQuery,
+) -> Result<crate::api::system::CommandHistoryResponse> {
+    let mut conditions = Vec::new();
+    let mut params_vec = Vec::new();
+    
+    if let Some(success_only) = query.success_only {
+        if success_only {
+            conditions.push("success = ?");
+            params_vec.push(1);
+        }
+    }
+    
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+    
+    let limit = query.limit.unwrap_or(50);
+    let offset = query.offset.unwrap_or(0);
+    
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM command_history {}",
+        where_clause
+    );
+    
+    let total: i64 = if params_vec.is_empty() {
+        conn.query_row(&count_sql, [], |row| row.get(0))?
+    } else {
+        let mut stmt = conn.prepare(&count_sql)?;
+        stmt.query_row(rusqlite::params_from_iter(params_vec.iter()), |row| row.get(0))?
+    };
+    
+    let sql = format!(
+        "SELECT id, command, args, working_dir, success, exit_code, execution_time_ms, user_confirmed, created_at 
+         FROM command_history {} 
+         ORDER BY created_at DESC 
+         LIMIT ? OFFSET ?",
+        where_clause
+    );
+    
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = if params_vec.is_empty() {
+        stmt.query(params![limit, offset])?
+    } else {
+        let mut all_params = params_vec.clone();
+        all_params.push(limit);
+        all_params.push(offset);
+        stmt.query(rusqlite::params_from_iter(all_params.iter()))?
+    };
+    
+    let mut commands = Vec::new();
+    while let Some(row) = rows.next()? {
+        let command = crate::api::system::CommandHistory {
+            id: row.get(0)?,
+            command: row.get(1)?,
+            args: row.get(2)?,
+            working_dir: row.get(3)?,
+            success: row.get(4)?,
+            exit_code: row.get(5)?,
+            execution_time_ms: row.get(6)?,
+            user_confirmed: row.get(7)?,
+            timestamp: row.get(8)?,
+        };
+        commands.push(command);
+    }
+    
+    Ok(crate::api::system::CommandHistoryResponse {
+        commands,
+        total,
+    })
 } 

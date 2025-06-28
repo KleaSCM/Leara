@@ -100,6 +100,22 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Create command history table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS command_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            command TEXT NOT NULL,
+            args TEXT,
+            working_dir TEXT,
+            success BOOLEAN NOT NULL DEFAULT 0,
+            exit_code INTEGER NOT NULL DEFAULT 0,
+            execution_time_ms INTEGER NOT NULL DEFAULT 0,
+            user_confirmed BOOLEAN NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )",
+        [],
+    )?;
+
     // Create indexes for better performance
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages (conversation_id)",

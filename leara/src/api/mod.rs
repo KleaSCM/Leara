@@ -49,29 +49,8 @@ use memory::{
 /// * `Router<AppState>` - Configured Axum router with all API endpoints
 pub fn create_router() -> Router<AppState> {
     Router::new()
-        // Health check endpoint
-        .route("/health", get(health_check))
-        
-        // Chat endpoints
-        .route("/chat", post(handle_chat))
-        .route("/chat/memory", post(handle_memory_query))
-        .route("/chat/summary", post(get_conversation_summary))
-        
-        // System information endpoint
-        .route("/system", get(get_system_info))
-        
-        // Memory management endpoints
-        .route("/memory", get(get_memory))
-        .route("/memory", post(store_memory))
-        .route("/memory/search", post(search_memories))
-        .route("/memory/summary", get(get_memory_summary))
-        
-        // Task management endpoints
-        .route("/tasks", get(get_tasks))
-        .route("/tasks", post(create_task))
-        .route("/tasks/:id/status", put(update_task_status))
-        
-        // Session context endpoints
-        .route("/context", post(store_session_context))
-        .route("/context/:session_id", get(get_session_context))
+        .nest("/health", health::create_router())
+        .nest("/chat", chat::create_router())
+        .nest("/memory", memory::create_router())
+        .nest("/system", system::create_router())
 } 

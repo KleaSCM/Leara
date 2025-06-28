@@ -24,20 +24,23 @@
 use axum::{
     http::StatusCode,
     response::Json,
+    routing::get,
+    Router,
 };
 // Import Serde for JSON serialization
 use serde::Serialize;
 // Import chrono for timestamp handling
 use chrono::Utc;
+use crate::models::AppState;
 
 /// Health check response structure
 /// Contains essential system status information for monitoring and debugging
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct HealthResponse {
     /// Current health status of the service ("healthy", "degraded", "unhealthy")
     pub status: String,
     /// ISO 8601 timestamp when the health check was performed
-    pub timestamp: chrono::DateTime<Utc>,
+    pub timestamp: String,
     /// Application version from Cargo.toml (e.g., "0.1.0")
     pub version: String,
     /// System uptime in seconds since Unix epoch
@@ -82,11 +85,11 @@ pub struct HealthResponse {
 pub async fn health_check() -> (StatusCode, Json<HealthResponse>) {
     // Create health response with current system information
     // This is a lightweight check that doesn't require external dependencies
-    let response = HealthResponse {
+    let health = HealthResponse {
         // Service status - could be enhanced to check actual service health
         status: "healthy".to_string(),
         // Current timestamp for monitoring and debugging
-        timestamp: Utc::now(),
+        timestamp: Utc::now().to_rfc3339(),
         // Application version from Cargo.toml build-time constants
         version: env!("CARGO_PKG_VERSION").to_string(),
         // System uptime calculated from Unix epoch
@@ -99,5 +102,11 @@ pub async fn health_check() -> (StatusCode, Json<HealthResponse>) {
 
     // Return HTTP 200 OK with health information
     // This indicates the service is ready to handle requests
-    (StatusCode::OK, Json(response))
+    (StatusCode::OK, Json(health))
+}
+
+/// Create router for health-related endpoints
+pub fn create_router() -> Router<AppState> {
+    Router::new()
+        .route("/", get(health_check))
 } 

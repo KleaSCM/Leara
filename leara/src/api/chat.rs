@@ -22,9 +22,11 @@
 
 // Import Axum web framework components for HTTP handling
 use axum::{
-    extract::Json,
+    extract::{Json, State},
     http::StatusCode,
     response::Json as JsonResponse,
+    Router,
+    routing::post,
 };
 // Import Serde for JSON serialization/deserialization
 use serde::{Deserialize, Serialize};
@@ -36,6 +38,9 @@ use tracing::{info, error};
 use crate::utils::ollama::{OllamaClient, OllamaOptions};
 // Import uuid for generating conversation IDs
 use uuid;
+// Import our AppState
+use crate::models::AppState;
+use chrono::Utc;
 
 /// Request structure for incoming chat messages
 /// Contains the user's message and optional context information
@@ -77,122 +82,63 @@ pub struct ChatError {
 /// // Server responds with AI-generated response and creates a task
 /// ```
 pub async fn handle_chat(
+    State(state): State<AppState>,
     Json(payload): Json<ChatRequest>,
 ) -> Result<JsonResponse<ChatResponse>, (StatusCode, Json<ChatError>)> {
-    // Log the incoming message for debugging and monitoring
-    info!("Received chat message: {}", payload.message);
+    // Example: Search for tasks and memories containing keywords from the message
+    let db = state.db.get().unwrap();
+    let mut found_tasks = Vec::new();
+    let mut found_memories = Vec::new();
 
-    // Check for task creation requests
-    let is_task_request = payload.message.to_lowercase().contains("remind") ||
-                         payload.message.to_lowercase().contains("todo") ||
-                         payload.message.to_lowercase().contains("task") ||
-                         payload.message.to_lowercase().contains("remember");
-
-    // Create Ollama client for AI model communication
-    let ollama_client = OllamaClient::new();
-    let model_name = "hexbenjamin/memgpt-dpo-uncensored:f16";
-
-    // Check if the model is available
-    match ollama_client.is_model_available(model_name).await {
-        Ok(true) => info!("Model {} is available", model_name),
-        Ok(false) => {
-            error!("Model {} is not available", model_name);
-            return Err((
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(ChatError {
-                    error: format!("AI model {} is not available. Please ensure Ollama is running and the model is installed.", model_name),
-                }),
-            ));
-        }
-        Err(e) => {
-            error!("Failed to check model availability: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ChatError {
-                    error: "Failed to check AI model availability".to_string(),
-                }),
-            ));
+    // Search tasks
+    if let Ok(task_response) = crate::db::queries::get_tasks(&db, &crate::models::memory::TaskQuery {
+        status: None,
+        priority: None,
+        limit: Some(5),
+        offset: Some(0),
+        include_completed: Some(false),
+    }) {
+        for task in task_response.tasks.iter() {
+            if payload.message.to_lowercase().contains(&task.title.to_lowercase()) {
+                found_tasks.push(task.title.clone());
+            }
         }
     }
 
-    // Configure model options for better response quality
-    let options = OllamaOptions {
-        temperature: Some(0.7),      // Balanced creativity and coherence
-        num_predict: Some(2048),     // Maximum response length
-        top_p: Some(0.9),           // Nucleus sampling for better quality
-        top_k: Some(40),            // Top-k sampling
-    };
-
-    // Build enhanced system prompt with memory context
-    let mut system_prompt = String::new();
-    
-    // Base system prompt
-    system_prompt.push_str("You are Leara, an intelligent AI assistant with memory capabilities. ");
-    
-    // Add context if provided
-    if let Some(context) = &payload.context {
-        system_prompt.push_str(&format!("Context: {}. ", context));
-    }
-    
-    // Add memory-related instructions
-    system_prompt.push_str(
-        "You can remember conversations, create tasks, and provide context-aware responses. \
-         When users ask you to remind them of something or create tasks, acknowledge this and \
-         provide helpful responses. You have access to a memory system that stores information \
-         across sessions."
-    );
-
-    // Add task creation context if this appears to be a task request
-    if is_task_request {
-        system_prompt.push_str(
-            " The user appears to be asking you to remember something or create a task. \
-             Acknowledge this and provide a helpful response about storing this information."
-        );
-    }
-
-    // Generate AI response using the memgpt model
-    let ai_response = match ollama_client
-        .generate(model_name, &payload.message, Some(&system_prompt), Some(options))
-        .await
-    {
-        Ok(response) => {
-            info!("Successfully generated response");
-            response
+    // Search memories
+    if let Ok(memory_response) = crate::db::queries::get_enhanced_memories(&db, &crate::models::memory::MemoryQuery {
+        key: None,
+        category: None,
+        priority: None,
+        limit: Some(5),
+        offset: Some(0),
+        include_expired: Some(false),
+    }) {
+        for memory in memory_response.memories.iter() {
+            if payload.message.to_lowercase().contains(&memory.key.to_lowercase()) {
+                found_memories.push(memory.key.clone());
+            }
         }
-        Err(e) => {
-            error!("Failed to generate response: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ChatError {
-                    error: "Failed to generate AI response".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // TODO: Integrate with memory service to store conversation context
-    // This would involve:
-    // 1. Getting the memory service from application state
-    // 2. Storing the conversation context
-    // 3. Creating tasks if requested
-    // 4. Retrieving relevant memories for context
-
-    // For now, we'll simulate memory integration
-    if is_task_request {
-        info!("Task request detected: {}", payload.message);
-        // TODO: Create task using memory service
-        // let task = memory_service.create_task_from_input(&payload.message, payload.context.as_deref())?;
     }
 
-    // Create and return the chat response
+    let mut response_text = String::new();
+    if !found_tasks.is_empty() {
+        response_text.push_str(&format!("I found these tasks related to your message: {}\n", found_tasks.join(", ")));
+    }
+    if !found_memories.is_empty() {
+        response_text.push_str(&format!("I found these memories related to your message: {}\n", found_memories.join(", ")));
+    }
+    if response_text.is_empty() {
+        response_text = "I searched your tasks and memories but didn't find anything directly related. Please provide more details or create a new task or memory if needed.".to_string();
+    }
+
     let response = ChatResponse {
-        message: ai_response,
-        conversation_id: uuid::Uuid::new_v4(), // Generate a new conversation ID
+        message: response_text,
+        conversation_id: uuid::Uuid::new_v4(),
         timestamp: chrono::Utc::now(),
         context: payload.context,
     };
 
-    // Return the response wrapped in Axum's JSON response type
     Ok(JsonResponse(response))
 }
 
@@ -208,6 +154,7 @@ pub async fn handle_chat(
 /// * `Ok(JsonResponse<ChatResponse>)` - Response with memory information
 /// * `Err((StatusCode, Json<ChatError>))` - Error response
 pub async fn handle_memory_query(
+    State(state): State<AppState>,
     Json(payload): Json<ChatRequest>,
 ) -> Result<JsonResponse<ChatResponse>, (StatusCode, Json<ChatError>)> {
     info!("Received memory query: {}", payload.message);
@@ -221,22 +168,66 @@ pub async fn handle_memory_query(
 
     if !is_memory_query {
         // Redirect to regular chat handler
-        return handle_chat(Json(payload)).await;
+        return handle_chat(State(state), Json(payload)).await;
     }
 
-    // TODO: Get memory service from application state
-    // For now, provide a mock response
-    let response_text = if payload.message.to_lowercase().contains("system.rs") {
-        "Yes, I remember! You asked me to remind you to make changes to system.rs in the leara project. \
-         This was stored as a high-priority task. Would you like me to show you the details or help you \
-         with making those changes?"
-    } else {
-        "I can help you find information from our previous conversations. Let me search through my memory \
-         for relevant information. What specific details are you looking for?"
-    };
+    // Search for relevant memories and tasks based on the query
+    let db = state.db.get().unwrap();
+    let mut found_memories = Vec::new();
+    let mut found_tasks = Vec::new();
+
+    // Search memories
+    if let Ok(memory_response) = crate::db::queries::get_enhanced_memories(&db, &crate::models::memory::MemoryQuery {
+        key: None,
+        category: None,
+        priority: None,
+        limit: Some(10),
+        offset: Some(0),
+        include_expired: Some(false),
+    }) {
+        for memory in memory_response.memories.iter() {
+            if payload.message.to_lowercase().contains(&memory.key.to_lowercase()) ||
+               memory.value.to_lowercase().contains(&payload.message.to_lowercase()) {
+                found_memories.push(format!("{}: {}", memory.key, memory.value));
+            }
+        }
+    }
+
+    // Search tasks
+    if let Ok(task_response) = crate::db::queries::get_tasks(&db, &crate::models::memory::TaskQuery {
+        status: None,
+        priority: None,
+        limit: Some(10),
+        offset: Some(0),
+        include_completed: Some(false),
+    }) {
+        for task in task_response.tasks.iter() {
+            if payload.message.to_lowercase().contains(&task.title.to_lowercase()) ||
+               task.description.as_ref().map(|d| d.to_lowercase().contains(&payload.message.to_lowercase())).unwrap_or(false) {
+                found_tasks.push(format!("{}: {}", task.title, task.description.as_deref().unwrap_or("No description")));
+            }
+        }
+    }
+
+    let mut response_text = String::new();
+    if !found_memories.is_empty() {
+        response_text.push_str("I found these memories:\n");
+        for memory in found_memories.iter().take(3) {
+            response_text.push_str(&format!("• {}\n", memory));
+        }
+    }
+    if !found_tasks.is_empty() {
+        response_text.push_str("I found these tasks:\n");
+        for task in found_tasks.iter().take(3) {
+            response_text.push_str(&format!("• {}\n", task));
+        }
+    }
+    if response_text.is_empty() {
+        response_text = "I searched through your memories and tasks but didn't find anything related to your query. You can create new memories or tasks if needed.".to_string();
+    }
 
     let response = ChatResponse {
-        message: response_text.to_string(),
+        message: response_text,
         conversation_id: uuid::Uuid::new_v4(),
         timestamp: chrono::Utc::now(),
         context: payload.context,
@@ -245,7 +236,7 @@ pub async fn handle_memory_query(
     Ok(JsonResponse(response))
 }
 
-/// Get conversation summary with memory context
+/// Get conversation summary with memory context (dynamic)
 /// 
 /// This endpoint provides a summary of recent conversations and stored memories
 /// to help users understand what information has been stored.
@@ -257,25 +248,58 @@ pub async fn handle_memory_query(
 /// * `Ok(JsonResponse<ChatResponse>)` - Summary response
 /// * `Err((StatusCode, Json<ChatError>))` - Error response
 pub async fn get_conversation_summary(
+    State(state): State<AppState>,
     Json(payload): Json<ChatRequest>,
 ) -> Result<JsonResponse<ChatResponse>, (StatusCode, Json<ChatError>)> {
     info!("Requesting conversation summary for session: {:?}", payload.session_id);
+    let db = state.db.get().unwrap();
 
-    // TODO: Get memory service from application state
-    // For now, provide a mock summary
-    let summary_text = "Here's a summary of our recent interactions:\n\n\
-        • You asked me to remind you to make changes to system.rs in the leara project\n\
-        • This was stored as a high-priority task\n\
-        • We've been working on the Leara AI Assistant project\n\
-        • You have 1 pending task and 1 recent memory stored\n\n\
-        Is there anything specific you'd like me to remind you about or help you with?";
+    // Get recent tasks
+    let mut summary_lines = Vec::new();
+    if let Ok(task_response) = crate::db::queries::get_tasks(&db, &crate::models::memory::TaskQuery {
+        status: None,
+        priority: None,
+        limit: Some(3),
+        offset: Some(0),
+        include_completed: Some(false),
+    }) {
+        for task in task_response.tasks.iter() {
+            summary_lines.push(format!("• Task: {} (priority {})", task.title, task.priority));
+        }
+    }
+    // Get recent memories
+    if let Ok(memory_response) = crate::db::queries::get_enhanced_memories(&db, &crate::models::memory::MemoryQuery {
+        key: None,
+        category: None,
+        priority: None,
+        limit: Some(3),
+        offset: Some(0),
+        include_expired: Some(false),
+    }) {
+        for memory in memory_response.memories.iter() {
+            summary_lines.push(format!("• Memory: {} (category {})", memory.key, memory.category));
+        }
+    }
+    let summary_text = if summary_lines.is_empty() {
+        "No recent tasks or memories found.".to_string()
+    } else {
+        format!("Here's a summary of your recent tasks and memories:\n\n{}", summary_lines.join("\n"))
+    };
 
     let response = ChatResponse {
-        message: summary_text.to_string(),
+        message: summary_text,
         conversation_id: uuid::Uuid::new_v4(),
         timestamp: chrono::Utc::now(),
         context: Some("conversation_summary".to_string()),
     };
 
     Ok(JsonResponse(response))
+}
+
+/// Create router for chat-related endpoints
+pub fn create_router() -> Router<AppState> {
+    Router::new()
+        .route("/", post(handle_chat))
+        .route("/memory", post(handle_memory_query))
+        .route("/summary", post(get_conversation_summary))
 } 

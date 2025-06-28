@@ -271,4 +271,71 @@ export async function checkHealth(): Promise<{ status: string }> {
     throw new Error(`Health check failed: ${response.statusText}`);
   }
   return response.json();
+}
+
+// System API functions
+export async function executeCommand(data: {
+  command: string;
+  args?: string[];
+  working_dir?: string;
+  require_confirmation?: boolean;
+}): Promise<ExecuteCommandResponse> {
+  const response = await fetch(`${API_BASE}/system/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to execute command: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getCommandHistory(params: any = {}): Promise<CommandHistoryResponse> {
+  const queryString = new URLSearchParams(params).toString();
+  const url = queryString ? `${API_BASE}/system/history?${queryString}` : `${API_BASE}/system/history`;
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch command history: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getAvailableApps(): Promise<{ applications: any[] }> {
+  const response = await fetch(`${API_BASE}/system/apps`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get available apps: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// Type definitions for system API
+export interface ExecuteCommandResponse {
+  success: boolean;
+  command: string;
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  execution_time_ms: number;
+  timestamp: string;
+}
+
+export interface CommandHistoryResponse {
+  commands: CommandHistory[];
+  total: number;
+}
+
+export interface CommandHistory {
+  id: number;
+  command: string;
+  args?: string;
+  working_dir?: string;
+  success: boolean;
+  exit_code: number;
+  execution_time_ms: number;
+  timestamp: string;
+  user_confirmed: boolean;
 } 
