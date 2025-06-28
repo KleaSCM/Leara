@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
 use reqwest::Client;
 use anyhow::Result;
 use tracing::{info, error};
+use serde_json;
 
 /// Ollama API request structure for chat completions
 #[derive(Debug, Serialize)]
@@ -147,10 +148,34 @@ impl OllamaClient {
             return Err(anyhow::anyhow!("Ollama API error: {}", error_text));
         }
 
-        let ollama_response: OllamaResponse = response.json().await?;
-        info!("Received response from Ollama model: {}", model);
+        // Read the response as text since Ollama returns streaming JSON
+        let response_text = response.text().await?;
+        let mut full_response = String::new();
         
-        Ok(ollama_response.response)
+        // Parse each line as a separate JSON object
+        for line in response_text.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            
+            match serde_json::from_str::<OllamaResponse>(line) {
+                Ok(ollama_response) => {
+                    full_response.push_str(&ollama_response.response);
+                    
+                    // If this is the final response, break
+                    if ollama_response.done {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to parse Ollama response line: {}", e);
+                    return Err(anyhow::anyhow!("Failed to parse Ollama response: {}", e));
+                }
+            }
+        }
+        
+        info!("Received response from Ollama model: {}", model);
+        Ok(full_response)
     }
 
     /// Check if a model is available locally
