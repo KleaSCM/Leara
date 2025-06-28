@@ -1,0 +1,73 @@
+@import 'variables';
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: $font-family;
+  font-size: $font-size-base;
+  line-height: 1.5;
+  color: $text-primary;
+  background-color: $background-color;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+// Scrollbar styling
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: $surface-color;
+}
+
+::-webkit-scrollbar-thumb {
+  background: $border-color;
+  border-radius: $border-radius-sm;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: lighten($border-color, 10%);
+}
+
+// Button reset
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+// Input reset
+input, textarea {
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  color: inherit;
+}
+
+// Focus styles
+*:focus {
+  outline: 2px solid $primary-color;
+  outline-offset: 2px;
+}
+
+// Selection
+::selection {
+  background-color: rgba($primary-color, 0.3);
+  color: $text-primary;
+} 

@@ -1,0 +1,54 @@
+# Rust
+target/
+Cargo.lock
+*.pdb
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Documentation
+doc/
+docs/
+
+# Coverage
+coverage/
+*.profraw
+
+# Profiling
+flamegraph.svg
+perf.data*
+
+# Backup files
+*.bak
+*.backup
+
+# Local development
+.local/ 
