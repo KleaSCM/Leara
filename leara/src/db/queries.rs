@@ -278,8 +278,9 @@ pub fn get_memory_by_key(conn: &Connection, key: &str) -> Result<Option<MemoryEn
             key: row.get(1)?,  // Memory key
             value: row.get(2)?,  // Memory value
             // Parse JSON metadata, or None if parsing fails
-            metadata: row.get::<_, Option<String>>(3)?
-                .and_then(|s| serde_json::from_str(&s).ok()),
+            metadata: row.get(3).ok().and_then(|json_str: String| {
+                serde_json::from_str(&json_str).ok()
+            }),
             // Parse RFC3339 timestamp, fallback to current time if parsing fails
             created_at: chrono::DateTime::parse_from_rfc3339(&created_at_str)
                 .unwrap_or_else(|_| Utc::now().into())
@@ -345,16 +346,17 @@ pub fn get_enhanced_memories(conn: &Connection, query: &MemoryQuery) -> Result<M
     let limit = query.limit.unwrap_or(50);
     let offset = query.offset.unwrap_or(0);
     
+    // Count total records
     let count_sql = format!("SELECT COUNT(*) FROM memory {}", where_clause);
-    
-    // For now, use a simple approach without dynamic parameters
     let total: i64 = if params_vec.is_empty() {
         conn.query_row(&count_sql, [], |row| row.get(0))?
     } else {
-        // Fallback to simple count for now
-        0
+        // Use parameterized count query
+        let mut stmt = conn.prepare(&count_sql)?;
+        stmt.query_row(rusqlite::params_from_iter(params_vec.iter()), |row| row.get(0))?
     };
     
+    // Build the main query
     let sql = format!(
         "SELECT id, key, value, category, priority, metadata, created_at, updated_at, expires_at, is_active 
          FROM memory {} 
@@ -363,8 +365,43 @@ pub fn get_enhanced_memories(conn: &Connection, query: &MemoryQuery) -> Result<M
         where_clause
     );
     
-    // For now, return empty results to avoid parameter complexity
-    let memories = Vec::new();
+    // Execute the query with parameters
+    let mut stmt = conn.prepare(&sql)?;
+    
+    // Combine parameters for the main query
+    let mut all_params = params_vec.clone();
+    all_params.push(limit.to_string());
+    all_params.push(offset.to_string());
+    
+    let memories = stmt.query_map(rusqlite::params_from_iter(all_params.iter()), |row| {
+        let created_at_str: String = row.get(6)?;
+        let updated_at_str: String = row.get(7)?;
+        let expires_at_str: Option<String> = row.get(8)?;
+        
+        Ok(Memory {
+            id: row.get(0)?,
+            key: row.get(1)?,
+            value: row.get(2)?,
+            category: row.get(3)?,
+            priority: row.get(4)?,
+            metadata: row.get(5).ok().and_then(|json_str: String| {
+                serde_json::from_str(&json_str).ok()
+            }),
+            created_at: chrono::DateTime::parse_from_rfc3339(&created_at_str)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc),
+            updated_at: chrono::DateTime::parse_from_rfc3339(&updated_at_str)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc),
+            expires_at: expires_at_str.and_then(|dt_str| {
+                chrono::DateTime::parse_from_rfc3339(&dt_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
+            }),
+            is_active: row.get(9)?,
+        })
+    })?
+    .collect::<Result<Vec<_>>>()?;
     
     Ok(MemoryResponse { memories, total })
 }
@@ -433,18 +470,66 @@ pub fn get_tasks(conn: &Connection, query: &TaskQuery) -> Result<TaskResponse> {
     let limit = query.limit.unwrap_or(50);
     let offset = query.offset.unwrap_or(0);
     
+    // Count total records
     let count_sql = format!("SELECT COUNT(*) FROM tasks {}", where_clause);
-    
-    // For now, use a simple approach without dynamic parameters
     let total: i64 = if params_vec.is_empty() {
         conn.query_row(&count_sql, [], |row| row.get(0))?
     } else {
-        // Fallback to simple count for now
-        0
+        // Use parameterized count query
+        let mut stmt = conn.prepare(&count_sql)?;
+        stmt.query_row(rusqlite::params_from_iter(params_vec.iter()), |row| row.get(0))?
     };
     
-    // For now, return empty results to avoid parameter complexity
-    let tasks = Vec::new();
+    // Build the main query
+    let sql = format!(
+        "SELECT id, title, description, status, priority, due_date, created_at, updated_at, completed_at, context, tags 
+         FROM tasks {} 
+         ORDER BY priority DESC, created_at DESC 
+         LIMIT ? OFFSET ?",
+        where_clause
+    );
+    
+    // Execute the query with parameters
+    let mut stmt = conn.prepare(&sql)?;
+    
+    // Combine parameters for the main query
+    let mut all_params = params_vec.clone();
+    all_params.push(limit.to_string());
+    all_params.push(offset.to_string());
+    
+    let tasks = stmt.query_map(rusqlite::params_from_iter(all_params.iter()), |row| {
+        let created_at_str: String = row.get(6)?;
+        let updated_at_str: String = row.get(7)?;
+        let due_date_str: Option<String> = row.get(5)?;
+        let completed_at_str: Option<String> = row.get(8)?;
+        
+        Ok(Task {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            description: row.get(2)?,
+            status: row.get(3)?,
+            priority: row.get(4)?,
+            due_date: due_date_str.and_then(|dt_str| {
+                chrono::DateTime::parse_from_rfc3339(&dt_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
+            }),
+            created_at: chrono::DateTime::parse_from_rfc3339(&created_at_str)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc),
+            updated_at: chrono::DateTime::parse_from_rfc3339(&updated_at_str)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc),
+            completed_at: completed_at_str.and_then(|dt_str| {
+                chrono::DateTime::parse_from_rfc3339(&dt_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
+            }),
+            context: row.get(9)?,
+            tags: row.get(10)?,
+        })
+    })?
+    .collect::<Result<Vec<_>>>()?;
     
     Ok(TaskResponse { tasks, total })
 }
